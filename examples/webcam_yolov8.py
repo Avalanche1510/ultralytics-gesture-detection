@@ -20,7 +20,7 @@ def main():
     parser.add_argument("--camera", type=int, default=0, help="Camera index, usually 0 for the default camera.")
     parser.add_argument("--imgsz", type=int, default=640, help="Inference image size.")
     parser.add_argument("--conf", type=float, default=0.25, help="Minimum detection confidence.")
-    parser.add_argument("--device", default="0", help="Inference device, for example 0 or cpu.")
+    parser.add_argument("--device", default=None, help="Inference device, for example 0 or cpu. Defaults to automatic selection.")
     args = parser.parse_args()
 
     camera = cv2.VideoCapture(args.camera)
