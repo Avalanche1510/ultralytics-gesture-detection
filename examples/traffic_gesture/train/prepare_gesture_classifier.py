@@ -275,7 +275,26 @@ class TrainPipeline:
 
 
 class InferencePipeline:
-    pass
+    """将交警检测器与手势分类器组合为一个推理管道。"""
+
+    def __init__(self, detector: TrafficPoliceDetector):
+        self.detector = detector
+
+    def detect_and_classify(self, image_path: Path) -> list[tuple[tuple[float, float, float, float], int, float]]:
+        """对一张图片执行交警检测和手势分类，返回 xyxy 框、类别 ID 和置信度。"""
+        detections = self.detector.detect(image_path)
+        results = []
+        for box, confidence in detections:
+            # 裁剪检测框区域
+            with Image.open(image_path) as image:
+                crop = image.crop(box)
+                # 将裁剪后的图像传入手势分类器
+                classification_result = self.classifier(crop, verbose=False)[0]
+                if classification_result.boxes:
+                    class_id = int(classification_result.boxes.cls[0].item())
+                    class_confidence = float(classification_result.boxes.conf[0].item())
+                    results.append((box, class_id, class_confidence))
+        return results
 
 
 def main():

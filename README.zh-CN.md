@@ -28,10 +28,19 @@
 
 ## 项目文件
 
-- [prepare_gesture_classifier.py](examples/traffic_gesture/prepare_gesture_classifier.py)：数据筛选、裁切与补边预处理。
-- [train_gesture_classifier.py](examples/traffic_gesture/train_gesture_classifier.py)：数据检查、实验配置、分类训练与恢复。
+- [prepare_gesture_classifier.py](examples/traffic_gesture/train/prepare_gesture_classifier.py)：数据筛选、裁切与补边预处理。
+- [train_gesture_classifier.py](examples/traffic_gesture/train/train_gesture_classifier.py)：数据检查、实验配置、分类训练与恢复。
 
-数据准备脚本中的 `InferencePipeline` 目前仍是占位类。脚本使用本地 Windows 路径，运行前需要检查数据集、模型权重和输出目录配置。图片与训练权重独立存放，不随源代码提供。
+- [inference.py](examples/traffic_gesture/inference/inference.py)：正在建设的推理入口，尚未实现完整两阶段推理。
+
+运行前需要检查数据集、模型权重和输出目录配置。数据准备模块中仍保留未实现的 `InferencePipeline` 占位类。
+
+## 实验结果与权重
+
+- [交警检测实验](examples/traffic_gesture/results/police_detector/filteredV1_traffic_police_200epc/README.md) · [best.pt](examples/traffic_gesture/results/police_detector/filteredV1_traffic_police_200epc/weights/best.pt)
+- [手势分类实验](examples/traffic_gesture/results/gesture_classifier/baseline_100epc_no_online_augmentation_20261006_032754/README.md) · [best.pt](examples/traffic_gesture/results/gesture_classifier/baseline_100epc_no_online_augmentation_20261006_032754/weights/best.pt)
+
+结果目录包含配置、指标、曲线、样例图及 best.pt/last.pt 权重。推理优先使用 best.pt。名为 last.pt 不保证能够续训：训练正常结束后可能已移除优化器状态。完整数据集未包含在仓库中。配置中的 Windows 路径记录原训练环境，复现时需要调整。
 
 ## 后续计划
 
@@ -45,7 +54,7 @@
 - [LabelImg 标注工具](https://github.com/HumanSignal/labelImg)
 - [核心工作区](./examples/traffic_gesture/)
 
-开发过程中使用的数据集本地名称包括 `TrafficPolice` 和 `gesture(DST1556)`。原始下载地址和再分发条款尚待补充，目前未在此提供数据集或训练权重下载。
+开发过程中使用的数据集本地名称包括 `TrafficPolice` 和 `gesture(DST1556)`。原始下载地址和再分发条款尚待补充，目前未在此提供数据集下载。
 
 ## 许可证
 

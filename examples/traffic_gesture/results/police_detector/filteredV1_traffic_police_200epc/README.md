@@ -32,8 +32,10 @@ mAP50 与更严格的 mAP50–95 存在差距，定位精度仍有改进空间�
 - [训练曲线](results.png)、[混淆矩阵](confusion_matrix.png)、[归一化混淆矩阵](confusion_matrix_normalized.png)。
 - [PR 曲线](BoxPR_curve.png)、[F1 曲线](BoxF1_curve.png)。
 - [标注分布](labels.jpg)、[验证标注示例](val_batch0_labels.jpg)、[验证预测示例](val_batch0_pred.jpg)。
+- [最佳权重 best.pt](weights/best.pt)：用于推理。
+- [末轮权重 last.pt](weights/last.pt)：不保证保留续训所需的优化器状态。
 
-本目录未包含模型权重或数据集。配置中的 Windows 绝对路径需按本机修改；数据集版本与对应代码提交号尚未以不可变标识完整归档。
+完整数据集未随本目录提供。配置中的本地绝对路径需按环境调整。
 
 </details>
 
@@ -71,7 +73,9 @@ The gap between mAP50 and stricter mAP50–95 leaves room for better localizatio
 - [Learning curves](results.png), [confusion matrix](confusion_matrix.png), [normalized matrix](confusion_matrix_normalized.png).
 - [PR curve](BoxPR_curve.png), [F1 curve](BoxF1_curve.png).
 - [Label distribution](labels.jpg), [validation labels](val_batch0_labels.jpg), [validation predictions](val_batch0_pred.jpg).
+- [Best weights: best.pt](weights/best.pt): for inference.
+- [Final weights: last.pt](weights/last.pt): optimizer state required for resuming may have been removed.
 
-Weights and datasets are not included. Adjust the Windows paths for your machine. Immutable dataset identifiers and the exact training code commit have not been fully archived.
+The full dataset is not included. Adapt the recorded local absolute paths to your environment.
 
 </details>

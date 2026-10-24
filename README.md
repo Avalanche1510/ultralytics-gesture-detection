@@ -28,10 +28,19 @@ End-to-end inference is under development. Raspberry Pi deployment and hardware 
 
 ## Project files
 
-- [prepare_gesture_classifier.py](examples/traffic_gesture/prepare_gesture_classifier.py): dataset filtering, cropping, and letterbox preprocessing.
-- [train_gesture_classifier.py](examples/traffic_gesture/train_gesture_classifier.py): dataset checks, experiment configuration, training, and resumption.
+- [prepare_gesture_classifier.py](examples/traffic_gesture/train/prepare_gesture_classifier.py): dataset filtering, cropping, and letterbox preprocessing.
+- [train_gesture_classifier.py](examples/traffic_gesture/train/train_gesture_classifier.py): dataset checks, experiment configuration, training, and resumption.
 
-The preparation script currently contains an unfinished `InferencePipeline` placeholder. Review local Windows dataset, checkpoint, and output paths before running either script. Images and trained weights are stored separately from the source code.
+- [inference.py](examples/traffic_gesture/inference/inference.py): inference entry point under construction; an end-to-end pipeline is not yet implemented.
+
+Review dataset, checkpoint, and output settings before running the scripts. The dataset preparation module still contains an unfinished `InferencePipeline` placeholder.
+
+## Experiment artifacts and weights
+
+- [Officer detector results](examples/traffic_gesture/results/police_detector/filteredV1_traffic_police_200epc/README.md) · [best.pt](examples/traffic_gesture/results/police_detector/filteredV1_traffic_police_200epc/weights/best.pt)
+- [Gesture classifier results](examples/traffic_gesture/results/gesture_classifier/baseline_100epc_no_online_augmentation_20261006_032754/README.md) · [best.pt](examples/traffic_gesture/results/gesture_classifier/baseline_100epc_no_online_augmentation_20261006_032754/weights/best.pt)
+
+The result folders include configurations, metrics, plots, sample images, and best.pt/last.pt weights. Use best.pt for inference. A file named last.pt is not necessarily resumable: completed runs may have optimizer state removed. Full datasets are not included. Recorded Windows paths describe the original training environment and must be adapted for reproduction.
 
 ## Next steps
 
@@ -44,7 +53,7 @@ Connect the detector and classifier into one inference pipeline, inspect validat
 - [Classification documentation](https://docs.ultralytics.com/tasks/classify/)
 - [LabelImg annotation tool](https://github.com/HumanSignal/labelImg)
 
-Local dataset names include `TrafficPolice` and `gesture(DST1556)`. Original download URLs and redistribution terms remain to be documented. No dataset or trained-weight download is currently provided here.
+Local dataset names include `TrafficPolice` and `gesture(DST1556)`. Original download URLs and redistribution terms remain to be documented. Full datasets are not provided; archived model weights are linked above.
 
 ## License
 
