@@ -28,7 +28,7 @@ End-to-end inference is under development. Raspberry Pi deployment and hardware 
 
 ## Project files
 
-- [prepare_gesture_classifier.py](examples/traffic_gesture/train/prepare_gesture_classifier.py): dataset filtering, cropping, and letterbox preprocessing.
+- [prepare_gesture_classifier_dataset.py](examples/traffic_gesture/train/prepare_gesture_classifier_dataset.py): dataset filtering, cropping, and letterbox preprocessing.
 - [train_gesture_classifier.py](examples/traffic_gesture/train/train_gesture_classifier.py): dataset checks, experiment configuration, training, and resumption.
 
 - [inference.py](examples/traffic_gesture/inference/inference.py): inference entry point under construction; an end-to-end pipeline is not yet implemented.

@@ -5,6 +5,7 @@ from ultralytics import YOLO
 from enum import IntEnum
 from dataclasses import dataclass
 from typing import Optional
+from typing import Union
 
 # 常量规范：写为大写字母，单词间用下划线分隔
 # 基础数据集路径
@@ -62,7 +63,7 @@ class GestureClass(IntEnum):
 
 
 @dataclass(frozen=True)
-class LetterboxTransform:
+class LetterboxTransformer:
     """将任意图片等比例缩放并补边为正方形，不拉伸人物比例。"""
 
     size: int
@@ -130,9 +131,9 @@ class TrafficPoliceDetector:
         self.model = YOLO(model_path)
         self.confidence = confidence
 
-    def detect(self, image_path: Path) -> list[tuple[tuple[float, float, float, float], float]]:
+    def detect(self, source: Union[Path, Image.Image]) -> list[tuple[tuple[float, float, float, float], float]]:
         """对一张图片检测，返回通过置信度阈值的 xyxy 框及其分数。"""
-        result = self.model(image_path, conf=self.confidence, verbose=False)[0]
+        result = self.model(source, conf=self.confidence, verbose=False)[0]
         boxes = result.boxes.xyxy.cpu().tolist()
         confidences = result.boxes.conf.cpu().tolist()
         return [(tuple(box), confidence) for box, confidence in zip(boxes, confidences)]
@@ -150,7 +151,7 @@ class TrainPipeline:
             pad_x=config.crop_pad_x,
             pad_y=config.crop_pad_y,
         )
-        self.letterbox_transformer = LetterboxTransform(
+        self.letterbox_transformer = LetterboxTransformer(
             size=config.letterbox_size,
             pad_color=config.pad_color
         )
@@ -272,29 +273,6 @@ class TrainPipeline:
             for label_path in self.get_label_paths(source_split)
             if self.get_source_key(label_path) == source_key
         ]
-
-
-class InferencePipeline:
-    """将交警检测器与手势分类器组合为一个推理管道。"""
-
-    def __init__(self, detector: TrafficPoliceDetector):
-        self.detector = detector
-
-    def detect_and_classify(self, image_path: Path) -> list[tuple[tuple[float, float, float, float], int, float]]:
-        """对一张图片执行交警检测和手势分类，返回 xyxy 框、类别 ID 和置信度。"""
-        detections = self.detector.detect(image_path)
-        results = []
-        for box, confidence in detections:
-            # 裁剪检测框区域
-            with Image.open(image_path) as image:
-                crop = image.crop(box)
-                # 将裁剪后的图像传入手势分类器
-                classification_result = self.classifier(crop, verbose=False)[0]
-                if classification_result.boxes:
-                    class_id = int(classification_result.boxes.cls[0].item())
-                    class_confidence = float(classification_result.boxes.conf[0].item())
-                    results.append((box, class_id, class_confidence))
-        return results
 
 
 def main():

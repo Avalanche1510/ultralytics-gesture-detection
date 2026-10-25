@@ -28,7 +28,7 @@
 
 ## 项目文件
 
-- [prepare_gesture_classifier.py](examples/traffic_gesture/train/prepare_gesture_classifier.py)：数据筛选、裁切与补边预处理。
+- [prepare_gesture_classifier_dataset.py](examples/traffic_gesture/train/prepare_gesture_classifier_dataset.py)：数据筛选、裁切与补边预处理。
 - [train_gesture_classifier.py](examples/traffic_gesture/train/train_gesture_classifier.py)：数据检查、实验配置、分类训练与恢复。
 
 - [inference.py](examples/traffic_gesture/inference/inference.py)：正在建设的推理入口，尚未实现完整两阶段推理。

@@ -214,3 +214,5 @@ fuzz-models/
 
 # Local Git worktrees
 /.worktrees/
+# inference product
+/examples/traffic_gesture/inference/outputs/
