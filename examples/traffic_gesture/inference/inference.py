@@ -1,5 +1,6 @@
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageGrab
+import numpy as np
+from PIL import Image, ImageDraw, ImageGrab, ImageFont
 from ultralytics import YOLO
 from datetime import datetime
 import cv2
@@ -14,6 +15,11 @@ from examples.traffic_gesture.train.prepare_gesture_classifier_dataset import (
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RESULTS_ROOT = PROJECT_ROOT / "results"
 IMAGE_OUTPUT_DIR = Path(__file__).resolve().parent / "outputs" / "images"
+VIDEO_OUTPUT_DIR = Path(__file__).resolve().parent / "outputs" / "videos"
+FONT = ImageFont.truetype(
+    r"C:\Windows\Fonts\arial.ttf",
+    size=36,
+)
 
 DETECTOR_PATH = (
     RESULTS_ROOT
@@ -156,7 +162,7 @@ class InferencePipeline:
                     outline="blue",
                     width=3
                 )
-                position = (x1, max(0, y1-16))
+                position = (x1, max(0, y1-44))
             else:
                 # 整图分类没有定位框，只在左上角显示类别。
                 position = (10, 10)
@@ -164,19 +170,10 @@ class InferencePipeline:
             draw.text(
                 position,
                 label,
-                fill="red",
-                stroke_width=0,
-                stroke_fill="black"
+                font=FONT,
+                fill="red"
             )
         return canvas
-
-    @staticmethod
-    def make_outputs_dir(image_output_dir: Path):
-        if image_output_dir.exists():
-            print(f"输出目录已存在于{image_output_dir}")
-        else:
-            print(f"成功创建输出目录于{image_output_dir}")
-            image_output_dir.mkdir(parents=True)
 
 
 class ModelUtility:
@@ -184,7 +181,28 @@ class ModelUtility:
         pass
 
     @staticmethod
-    def read_clipboard_image() -> Image.Image:
+    def set_output_path(output_dir, prefix: str = "IMAGE", suffix: str = "jpg") -> dict:
+        # 生成默认的时序文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        output_path = Path(output_dir / f"{prefix}_{timestamp}.{suffix}")
+        return {"timestamp": timestamp, "path": output_path}
+
+    @staticmethod
+    def make_outputs_dir(image_output_dir: Path, video_output_dir: Path):
+        # 检查图片输出路径是否存在并创建
+        if image_output_dir.exists():
+            print(f"图片输出目录已存在于{image_output_dir}")
+        else:
+            print(f"成功创建图片输出目录于{image_output_dir}")
+            image_output_dir.mkdir(parents=True)
+        # 检查视频输出路径是否存在并创建
+        if video_output_dir.exists():
+            print(f"视频输出目录已存在于{video_output_dir}")
+        else:
+            print(f"成功创建视频输出目录于{video_output_dir}")
+            video_output_dir.mkdir(parents=True)
+
+    def read_clipboard_image(self, output_dir) -> tuple[Image.Image, Path]:
         """读取剪贴板中的截图，返回 RGB 图片。"""
         content = ImageGrab.grabclipboard()
 
@@ -193,41 +211,130 @@ class ModelUtility:
                 "剪贴板中没有图片。请先用 Win+Shift+S 截图，再运行程序。"
             )
 
-        return content.convert("RGB")
+        output_path = self.set_output_path(output_dir)["path"]
+        return content.convert("RGB"), output_path
 
-    def read_video(self):
-        pass
+    @staticmethod
+    def read_video(video_path: Path, start_frame: int = 0) -> tuple[cv2.VideoCapture, dict]:
+        """打开本地视频；调用者负责在使用结束后 release。"""
+        if not video_path.is_file():
+            raise FileNotFoundError(f"视频不存在：{video_path}")
+
+        if start_frame < 0:
+            raise ValueError("start_frame 不能小于 0。")
+
+        # VideoCapture是视频读取器，并不是全部视频帧。
+        # 后续每调用一次capture.read()，才读取下一帧。
+        capture = cv2.VideoCapture(str(video_path))
+
+        if not capture.isOpened():
+            capture.release()
+            raise RuntimeError(f"无法打开视频：{video_path}")
+
+        fps = capture.get(cv2.CAP_PROP_FPS)
+        width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+        print(f"尺寸：{width} × {height}")
+        print(f"帧率：{fps}")
+        print(f"声明帧数：{frame_count}")
+        capture_info = {"fps": fps, "width": width, "height": height, "frame_count": frame_count}
+
+        # 尝试从一个特定帧开始读取
+        if 0 < frame_count <= start_frame:
+            capture.release()
+            raise ValueError(
+                f"起始帧 {start_frame} 超出范围，视频声明共有 {frame_count} 帧。"
+            )
+        else:
+            positioned = capture.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+            if not positioned:
+                capture.release()
+                raise RuntimeError(f"无法定位到第 {start_frame} 帧。")
+            return capture, capture_info
+
+    def get_video_writer(self, output_dir: Path, capture_info: dict) -> cv2.VideoWriter:
+        # 把读取的单独的视频帧写入为一个完整的循环，合成视频
+        fps = capture_info["fps"]
+        width = capture_info["width"]
+        height = capture_info["height"]
+
+        output_path = self.set_output_path(output_dir, "VIDEO", "mp4")["path"]
+
+        if not (0 < fps < float("inf")) or width <= 0 or height <= 0:
+            raise ValueError("视频的帧率或尺寸无效，无法创建输出视频。")
+
+        codec = cv2.VideoWriter.fourcc(*"mp4v")
+        writer = cv2.VideoWriter(
+            str(output_path),
+            codec,
+            fps,
+            (width, height)
+        )
+
+        if not writer.isOpened():
+            writer.release()
+            raise RuntimeError(f"无法创建输出视频: {output_path}")
+
+        return writer
+
+    def predict_video(self, pipeline: InferencePipeline, video_path: Path, start_frame=0, end_frame=-1, use_detector=True, progress=True):
+        # 只预测视频并输出到目录，不返回任何值。输出视频范围：[start_frame, end_frame)
+        if end_frame != -1 and end_frame <= start_frame:
+            raise ValueError("end_frame 必须大于 start_frame，或为 -1。")
+
+        capture, capture_info = self.read_video(video_path, start_frame=start_frame)  # 视频帧同样是从0开始，到n-1帧结束
+        writer = None
+        try:
+            writer = self.get_video_writer(VIDEO_OUTPUT_DIR, capture_info)
+            frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+            if end_frame == -1:
+                end_frame = frame_count
+            frame_index = start_frame
+
+            while end_frame == -1 or frame_index < end_frame:
+                success, frame = capture.read()
+                if not success:
+                    break
+                if progress:
+                    print(f"当前处于{frame_index}/{end_frame}帧，进度{round(((frame_index-start_frame+2)/end_frame-start_frame)*100, 1)}%")
+
+                # OpenCV 的 BGR 数组 → Pillow 的 RGB 图片
+                image = Image.fromarray(
+                    cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                )
+
+                predictions = pipeline.get_image_predictions(
+                    image,
+                    use_detector=use_detector,
+                    display=False
+                )
+
+                annotated_image = pipeline.draw_predictions(image, predictions)
+                # annotated_image.show()
+                # 输入 Pillow 的 RGB 图片，输出 OpenCV 的 BGR
+                output_frame = cv2.cvtColor(
+                    np.asarray(annotated_image),
+                    cv2.COLOR_RGB2BGR
+                )
+                writer.write(output_frame)
+                frame_index += 1
+        finally:
+            capture.release()
+            if writer is not None:
+                writer.release()
 
 
 def main():
     pipeline = InferencePipeline(DETECTOR_PATH, CLASSIFIER_PATH)
-    pipeline.make_outputs_dir(IMAGE_OUTPUT_DIR)
     print("分类模型的类别映射：", pipeline.classifier.names)
 
-    # test_image_path = Path(r"C:\Users\AvaAtlas\Pictures\Screenshots\Screenshot 2026-10-25 125822.png")
-    # with Image.open(test_image_path) as image:
-    #     predictions = pipeline.get_image_predictions(image, use_detector=True)
-    #     annotated_image = pipeline.draw_predictions(image, predictions)
-    # output_path = IMAGE_OUTPUT_DIR / f"{test_image_path.stem}_prediction.jpg"
     util = ModelUtility()
-    image = util.read_clipboard_image()
+    util.make_outputs_dir(IMAGE_OUTPUT_DIR, VIDEO_OUTPUT_DIR)
 
-    predictions = pipeline.get_image_predictions(
-        image,
-        use_detector=True,
-        display=False,
-    )
-    annotated_image = pipeline.draw_predictions(image, predictions)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    output_path = IMAGE_OUTPUT_DIR / f"clipboard_{timestamp}_prediction.jpg"
-
-    annotated_image.save(output_path, quality=95)
-    print(f"预测图片已保存：{output_path}")
-    annotated_image.show()
-
-    for prediction in predictions:
-        print(prediction)
+    video_path = Path(r"C:\Users\AvaAtlas\Videos\Captures\test_video.mp4")
+    util.predict_video(pipeline, video_path)
 
 
 if __name__ == "__main__":
