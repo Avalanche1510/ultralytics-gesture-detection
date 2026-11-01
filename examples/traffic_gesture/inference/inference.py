@@ -4,6 +4,7 @@ from PIL import Image, ImageDraw, ImageGrab, ImageFont
 from ultralytics import YOLO
 from datetime import datetime
 import cv2
+from typing import Union
 
 # 导入自定义的交警定位器，标注框裁剪器，标注框（正方形）塑形器
 from examples.traffic_gesture.train.prepare_gesture_classifier_dataset import (
@@ -55,25 +56,36 @@ class InferencePipeline:
         )
         self.classifier = YOLO(model=classifier_path)
 
-    def identify_police(self, image: Image.Image, display=False):
-        """输入Image.Image类型，只检测一张图片中的目标交警，并返回一个检测框列表"""
-        detections = self.detector.detect(image)
+    def identify_police(self, image: Image.Image, display=False, tracking=False) -> list[dict]:
+        """检测或跟踪交警；视频模式下同时返回跟踪 ID。"""
+        if tracking:
+            detections = self.detector.track(image)
+        else:
+            detections = [
+                {
+                    "track_id": None,
+                    "box": xyxy,
+                    "detector_confidence": confidence
+                }
+                for xyxy, confidence in self.detector.detect(image)
+            ]
 
         if display:
             print(f"检测到 {len(detections)} 个目标")
 
-            for index, (xyxy, confidence) in enumerate(detections):
+            for detection in enumerate(detections):
                 print(
-                    f"目标 {index}: "
-                    f"框={xyxy}, 检测置信度={confidence:.3f}"
+                    f"ID={detection['track_id']}，"  # track_id是int类型
+                    f"框={detection['box']}，"
+                    f"检测置信度={detection['detector_confidence']:.3f}"
                 )
 
         return detections
 
-    def classify_gesture(self, image: Image.Image, detection=None, display=False):
+    def classify_gesture(self, image: Image.Image, detection=None, display=False) -> dict:
         """输入Image.Image类型，裁剪塑形，并分类一张图片中人员的交警手势"""
         if detection is not None:
-            xyxy, detector_confidence = detection[0], detection[1]
+            xyxy, detector_confidence = detection["box"], detection["detector_confidence"]
             # 根据检测框扩边裁切，不再读取数据集标签框。
             crop_box = self.crop_transformer.expand_clip_xyxy(xyxy, image.size)
             crop = image.crop(crop_box)
@@ -94,12 +106,13 @@ class InferencePipeline:
             print("=======================================================")
             for class_id, prob in enumerate(result.probs.data):
                 gesture_name = result.names[class_id]
-                gesture_confidence = prob.item()
-                print(f"类别: {gesture_name}, 置信度: {gesture_confidence}")
+                gesture_top_confidence = prob.item()
+                print(f"类别: {gesture_name}, 置信度: {gesture_top_confidence}")
             print("=======================================================")
         class_id = result.probs.top1
         gesture_name = result.names[class_id]
-        gesture_confidence = result.probs.top1conf.item()
+        gesture_top_confidence = result.probs.top1conf.item()
+        gesture_confidences = result.probs.data.cpu().numpy().copy()
 
         if detection is not None:
             prediction = {
@@ -107,12 +120,16 @@ class InferencePipeline:
                 "crop_box": crop_box,
                 "detector_confidence": detector_confidence,
                 "gesture": gesture_name,
-                "gesture_confidence": gesture_confidence,
+                "gesture_top_confidence": gesture_top_confidence,
+                "gesture_confidences": gesture_confidences,  # 当前帧全部8个手势分类的confidences，用于平滑的视频识别
+                "result_names": result.names,
             }
         else:
             prediction = {
                 "gesture": gesture_name,
-                "gesture_confidence": gesture_confidence,
+                "gesture_top_confidence": gesture_top_confidence,
+                "gesture_confidences": gesture_confidences,
+                "result_names": result.names
             }
 
         if display:
@@ -121,33 +138,62 @@ class InferencePipeline:
 
         return prediction
 
-    def get_image_predictions(self, image: Image.Image, use_detector=True, display=False) -> list:
+    def get_image_predictions(self, image: Image.Image, use_detector=True, display=False, tracking=False) -> dict[int, dict]:
         """处理一张图片，返回图片内所有目标的手势预测。"""
         image = image.convert("RGB")
+        predictions = dict()
 
         if not use_detector:
-            prediction = self.classify_gesture(image, display=display)
-            return [prediction]
+            predictions[-1] = self.classify_gesture(image, display=display)
+            return predictions
 
-        detections = self.identify_police(image, display=display)
+        detections = self.identify_police(image, display=display, tracking=tracking)
 
-        predictions = []
         for detection in detections:
-            prediction = self.classify_gesture(image, detection=detection, display=display)
-            predictions.append(prediction)
+            predictions[detection["track_id"]] = self.classify_gesture(image, detection=detection, display=display)
 
         return predictions
 
+    # @staticmethod
+    # def update_confidences(current_confidences: np.ndarray, history_confidences: np.ndarray, smoothing_params: dict = None):
+    #     # 更新平滑后的分类置信度
+    #     if smoothing_params is None:
+    #         smoothing_params = {"method": "EMA", "alpha": 0.5}
+    #
+    #     # EMA: Exponential Moving Average，指数移动平均
+    #     if smoothing_params["method"] == "EMA":
+    #         return smoothing_params["alpha"] * current_confidences + (1 - smoothing_params["alpha"]) * history_confidences
+    #     else:
+    #         raise RuntimeError(f"不支持的平滑方式: {smoothing_params['method']}")
+    #
+    # def smoothing(self, current_confidences_dict: dict[np.ndarray], history_confidences_dict: dict[np.ndarray], smoothing_params: dict = None):
+    #     # 更新平滑后的分类结果
+    #     if smoothing_params is None:
+    #         smoothing_params = {"method": "EMA", "alpha": 0.5}
+    #
+    #     # EMA: Exponential Moving Average，指数移动平均
+    #     if smoothing_params["method"] == "EMA":
+    #         for track_id in current_confidences_dict.keys():
+    #             # 查询当前预测目标是否具有历史
+    #             if track_id in history_confidences_dict.keys():
+    #                 smoothed_confidences = self.update_confidences(current_confidences_dict[track_id], history_confidences_dict[track_id], smoothing_params=smoothing_params)
+    #                 current_confidences_dict[track_id] = smoothed_confidences
+    #         return current_confidences_dict
+    #     else:
+    #         raise RuntimeError(f"不支持的平滑方式: {smoothing_params['method']}")
+
     @staticmethod
-    def draw_predictions(image: Image.Image, predictions: list[dict]) -> Image.Image:
+    def draw_predictions(image: Image.Image, predictions: dict[int, dict]) -> Image.Image:
         """在1张原图副本上绘制预测结果，返回1张可视化图片。"""
         canvas = image.convert("RGB").copy()
         draw = ImageDraw.Draw(canvas)
 
-        for prediction in predictions:
+        for track_id in predictions.keys():
+            prediction = predictions[track_id]
             label = (
+                f"Entity <{track_id}> "
                 f"{prediction['gesture']} - "
-                f"{prediction['gesture_confidence']:.2f}"
+                f"{prediction['gesture_top_confidence']:.2f}"
             )
             if "crop_box" in prediction:
                 draw.rectangle(
@@ -173,6 +219,7 @@ class InferencePipeline:
                 font=FONT,
                 fill="red"
             )
+
         return canvas
 
 
@@ -279,51 +326,65 @@ class ModelUtility:
 
         return writer
 
-    def predict_video(self, pipeline: InferencePipeline, video_path: Path, start_frame=0, end_frame=-1, use_detector=True, progress=True):
-        # 只预测视频并输出到目录，不返回任何值。输出视频范围：[start_frame, end_frame)
-        if end_frame != -1 and end_frame <= start_frame:
-            raise ValueError("end_frame 必须大于 start_frame，或为 -1。")
-
-        capture, capture_info = self.read_video(video_path, start_frame=start_frame)  # 视频帧同样是从0开始，到n-1帧结束
-        writer = None
-        try:
-            writer = self.get_video_writer(VIDEO_OUTPUT_DIR, capture_info)
-            frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
-            if end_frame == -1:
-                end_frame = frame_count
-            frame_index = start_frame
-
-            while end_frame == -1 or frame_index < end_frame:
-                success, frame = capture.read()
-                if not success:
-                    break
-                if progress:
-                    print(f"当前处于{frame_index}/{end_frame}帧，进度{round(((frame_index-start_frame+2)/end_frame-start_frame)*100, 1)}%")
-
-                # OpenCV 的 BGR 数组 → Pillow 的 RGB 图片
-                image = Image.fromarray(
-                    cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                )
-
-                predictions = pipeline.get_image_predictions(
-                    image,
-                    use_detector=use_detector,
-                    display=False
-                )
-
-                annotated_image = pipeline.draw_predictions(image, predictions)
-                # annotated_image.show()
-                # 输入 Pillow 的 RGB 图片，输出 OpenCV 的 BGR
-                output_frame = cv2.cvtColor(
-                    np.asarray(annotated_image),
-                    cv2.COLOR_RGB2BGR
-                )
-                writer.write(output_frame)
-                frame_index += 1
-        finally:
-            capture.release()
-            if writer is not None:
-                writer.release()
+    # def predict_video(self, pipeline: InferencePipeline, video_path: Path,  smoothing_params: dict = None, start_frame=0, end_frame=-1, use_detector=True, progress=True):
+    #     # 只预测视频并输出到目录，不返回任何值。默认开启跟踪模式，但是可选择是否使用平滑模式。输出视频范围：[start_frame, end_frame)
+    #     if end_frame != -1 and end_frame <= start_frame:
+    #         raise ValueError("end_frame 必须大于 start_frame，或为 -1。")
+    #
+    #     capture, capture_info = self.read_video(video_path, start_frame=start_frame)  # 视频帧同样是从0开始，到n-1帧结束
+    #     writer = None
+    #     try:
+    #         writer = self.get_video_writer(VIDEO_OUTPUT_DIR, capture_info)
+    #         frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+    #         if end_frame == -1:
+    #             end_frame = frame_count
+    #         frame_index = start_frame
+    #
+    #         history_confidences_dict = []
+    #
+    #         while end_frame == -1 or frame_index < end_frame:
+    #             success, frame = capture.read()
+    #             if not success:
+    #                 break
+    #             if progress:
+    #                 print(f"当前处于第{frame_index+1}/{end_frame}帧，进度{round((frame_index - start_frame + 1) / (end_frame - start_frame) * 100, 1)}%")
+    #
+    #             # OpenCV 的 BGR 数组 → Pillow 的 RGB 图片
+    #             image = Image.fromarray(
+    #                 cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    #             )
+    #             predictions = pipeline.get_image_predictions(
+    #                 image,
+    #                 use_detector=use_detector,
+    #                 display=False,
+    #                 tracking=True,
+    #             )
+    #
+    #             # 将confidences从predictions中提取出来，组合成一个dict，方便查找和对比track_id
+    #             current_confidences_dict = {}
+    #             for prediction in predictions:
+    #                 current_confidences_dict[prediction["track_id"]] = prediction["gesture_confidences"]
+    #
+    #             if smoothing_params is not None:
+    #                 current_confidences_dict = pipeline.smoothing(current_confidences_dict, history_confidences_dict, smoothing_params)
+    #                 for track_id in current_confidences_dict.keys():
+    #
+    #
+    #             history_confidences_dict = current_confidences_dict
+    #
+    #             annotated_image = pipeline.draw_predictions(image, predictions)
+    #             # annotated_image.show()
+    #             # 输入 Pillow 的 RGB 图片，输出 OpenCV 的 BGR
+    #             output_frame = cv2.cvtColor(
+    #                 np.asarray(annotated_image),
+    #                 cv2.COLOR_RGB2BGR
+    #             )
+    #             writer.write(output_frame)
+    #             frame_index += 1
+    #     finally:
+    #         capture.release()
+    #         if writer is not None:
+    #             writer.release()
 
 
 def main():
@@ -333,8 +394,12 @@ def main():
     util = ModelUtility()
     util.make_outputs_dir(IMAGE_OUTPUT_DIR, VIDEO_OUTPUT_DIR)
 
-    video_path = Path(r"C:\Users\AvaAtlas\Videos\Captures\test_video.mp4")
-    util.predict_video(pipeline, video_path)
+    # video_path = Path(r"C:\Users\AvaAtlas\Videos\Captures\test_video.mp4")
+    # util.predict_video(pipeline, video_path)
+
+    image_path = Path(r"C:\Users\AvaAtlas\Pictures\Screenshots\Screenshot 2026-10-25 125547.png")
+    with Image.open(image_path) as image:
+        print(pipeline.get_image_predictions(image))
 
 
 if __name__ == "__main__":

@@ -138,6 +138,34 @@ class TrafficPoliceDetector:
         confidences = result.boxes.conf.cpu().tolist()
         return [(tuple(box), confidence) for box, confidence in zip(boxes, confidences)]
 
+    # def track(self, image: Image.Image) -> list[dict]:
+    #     """处理连续视频中的一帧，返回带跟踪 ID 的目标。"""
+    #     result = self.model.track(
+    #         source=image,
+    #         persist=True,
+    #         tracker="bytetrack.yaml",
+    #         conf=self.confidence,
+    #         verbose=False
+    #     )[0]
+    #
+    #     boxes = result.boxes
+    #     if boxes is None or boxes.id is None:
+    #         return []
+    #
+    #     tracks = []
+    #     for xyxy, confidence, track_id in zip(
+    #         boxes.xyxy.cpu().tolist(),
+    #         boxes.conf.cpu().tolist(),
+    #         boxes.id.int().cpu().tolist()
+    #     ):
+    #         tracks.append({
+    #             "track_id": track_id,
+    #             "box": tuple(xyxy),
+    #             "detector_confidence": confidence
+    #         })
+    #
+    #     return tracks
+
 
 class TrainPipeline:
     """将人工审核后的分类数据处理为可供训练使用的最终数据集。"""
