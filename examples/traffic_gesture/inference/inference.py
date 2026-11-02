@@ -238,20 +238,20 @@ class InferencePipeline:
 
         Returns:
             (np.ndarray): alpha * 当前概率 + (1 - alpha) * 历史概率，形状与输入相同。
-
-        Raises:
-            RuntimeError: method 不是 "EMA"。
         """
         if smoothing_params is None:
             smoothing_params = {"method": "EMA", "alpha": 0.2}
 
         # EMA: Exponential Moving Average，指数移动平均
-        print(smoothing_params["method"])
         if smoothing_params["method"] == "EMA":
             return smoothing_params["alpha"] * current_confidences + (1 - smoothing_params["alpha"]) * history_confidences
-        # elif smoothing_params["method"] == "Power Sharpened EMA":
-        #     scores = current_confidences ** 2
-        #     smoothed_score = smoothing_params["alpha"] * scores + (1 - smoothing_params["alpha"]) * history_confidences
+
+        # Power Sharpened EMA: 对current_confidences取平方锐化，然后除以总值做归一化，随后用普通EMA的方式融合历史
+        elif smoothing_params["method"] == "PSEMA":
+            # 锐化current_confidences并归一化处理
+            current_confidences = (current_confidences ** 2) / (current_confidences ** 2).sum()
+            # 常规EMA
+            return smoothing_params["alpha"] * current_confidences + (1 - smoothing_params["alpha"]) * history_confidences
         else:
             raise RuntimeError(f"不支持的平滑方式: {smoothing_params['method']}")
 
@@ -277,7 +277,7 @@ class InferencePipeline:
                     ...
                 }
 
-            新 ID 保留原始概率，缺席目标不会从历史中补入当前结果。
+            新 ID 在 EMA 模式下保留原始概率，在 PSEMA 模式下使用平方归一化后的概率初始化。
 
         Notes:
             本方法不保存历史、不决定历史有效期；这些策略由视频调用方负责。
@@ -296,6 +296,25 @@ class InferencePipeline:
                     history_confidences = history_predictions[track_id]["gesture_confidences"]
                     # 平滑更新current_prediction
                     current_predictions[track_id]["gesture_confidences"] = self.update_confidences(current_confidences, history_confidences, smoothing_params=smoothing_params)
+                else:
+                    # 第一帧不做平滑，此处按格式显式处理第一帧
+                    pass
+            return current_predictions
+        elif smoothing_params["method"] == "PSEMA":
+            for track_id in current_predictions.keys():
+                current_prediction = current_predictions[track_id]
+                current_confidences = current_predictions[track_id]["gesture_confidences"]
+
+                # 查询当前预测目标是否具有历史
+                if track_id in history_predictions.keys():
+                    current_confidences = current_prediction["gesture_confidences"]
+                    history_confidences = history_predictions[track_id]["gesture_confidences"]
+                    # 平滑更新current_prediction
+                    current_predictions[track_id]["gesture_confidences"] = self.update_confidences(current_confidences, history_confidences, smoothing_params=smoothing_params)
+                else:
+                    # 第一帧只做锐化
+                    current_predictions[track_id]["gesture_confidences"] = (current_confidences ** 2) / (current_confidences ** 2).sum()
+
             return current_predictions
         else:
             raise RuntimeError(f"不支持的平滑方式: {smoothing_params['method']}")
@@ -656,7 +675,7 @@ def main():
     util.make_outputs_dir(IMAGE_OUTPUT_DIR, VIDEO_OUTPUT_DIR)
 
     video_path = Path(r"C:\Users\AvaAtlas\Videos\Captures\test_video.mp4")
-    util.predict_video(pipeline, video_path)
+    util.predict_video(pipeline, video_path, smoothing_params={"method": "PSEMA", "alpha": 0.2})
 
     # image_path = Path(r"C:\Users\AvaAtlas\Pictures\Screenshots\Screenshot 2026-10-25 125547.png")
     # with Image.open(image_path) as image:
