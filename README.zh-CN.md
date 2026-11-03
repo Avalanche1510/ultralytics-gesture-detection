@@ -8,11 +8,11 @@
 
 ## 技术路线
 
-计划中的推理流程为：输入图像 → YOLOv8n 交警检测 → 扩边裁切 → 等比例缩放并补边 → YOLOv8n-cls 手势分类。
+推理流程为：输入图像 → YOLOv8n 交警检测 → 扩边裁切 → 等比例缩放并补边 → YOLOv8n-cls 手势分类。
 
 八类手势包括停止、直行、左转弯、右转弯、变道、减速慢行、靠边停车、左转弯待转。目前分类器没有独立的背景类别。
 
-数据准备阶段由检测器筛选原始帧分组，再根据原始手势标注框裁切；推理阶段将使用检测器的预测框。两种裁切来源的差异仍需通过端到端实验验证。
+数据准备阶段由检测器筛选原始帧分组，再根据原始手势标注框裁切；推理阶段使用检测器的预测框。两种裁切来源对准确率的影响仍需通过端到端实验验证。
 
 ## 当前进度
 
@@ -24,16 +24,15 @@
 
 该指标属于验证集结果，不代表独立测试或真实部署效果。原始帧 key 不重叠，也不等于人物或视频在不同集合之间相互独立。
 
-端到端推理管线正在建设中；树莓派部署与硬件控制尚未完成。
+本地文件视频推理已实现：ByteTrack 跨帧跟踪交警，可选 EMA/PSEMA 按轨迹平滑手势分数，结果写入带标注的 MP4。树莓派容器推理、实时 CSI 摄像头输入和硬件控制尚未验证。
 
 ## 项目文件
 
 - [prepare_gesture_classifier_dataset.py](examples/traffic_gesture/train/prepare_gesture_classifier_dataset.py)：数据筛选、裁切与补边预处理。
 - [train_gesture_classifier.py](examples/traffic_gesture/train/train_gesture_classifier.py)：数据检查、实验配置、分类训练与恢复。
 
-- [inference.py](examples/traffic_gesture/inference/inference.py)：正在建设的推理入口，尚未实现完整两阶段推理。
-
-运行前需要检查数据集、模型权重和输出目录配置。数据准备模块中仍保留未实现的 `InferencePipeline` 占位类。
+- [inference.py](examples/traffic_gesture/inference/inference.py)：图片和视频推理入口。
+- [Docker 部署指南](examples/traffic_gesture/deploy/README.md)：使用 Compose 处理本地视频并验收输出。部署文件位于 `codex/gesture-pipeline` 分支，尚未合并到 `main`。
 
 ## 实验结果与权重
 
@@ -44,7 +43,7 @@
 
 ## 后续计划
 
-串联交警检测与手势分类，建立统一推理入口；分析验证错误，评估新人物、新摄像头下的泛化能力，在模型选择结束后进行独立测试。随后导出模型，在树莓派 5 上测试速度，并探索 LED 等硬件交互。
+先在树莓派 5 上验证文件视频推理、测量处理速度，再接入摄像头。新人物与新摄像头的泛化能力应单独评估，不以部署速度代替识别效果；硬件控制留待后续实现。
 
 ## 资源链接
 

@@ -8,11 +8,11 @@ This is a customized Ultralytics fork, not the official upstream repository.
 
 ## Approach
 
-The planned inference pipeline is: image → YOLOv8n officer detection → expanded crop → aspect-ratio-preserving letterbox → YOLOv8n-cls gesture classification.
+The inference pipeline detects officers with YOLOv8n, expands each crop, preserves its aspect ratio with letterboxing, and classifies the gesture with YOLOv8n-cls.
 
 The eight classes are stop, move straight, left turn, right turn, lane changing, slow down, pull over, and left-turn waiting. The classifier currently has no separate background class.
 
-During dataset preparation, the detector selects source-frame groups while original gesture annotations define the crops. Inference will use predicted detection boxes; this difference still needs end-to-end evaluation.
+During dataset preparation, the detector selects source-frame groups while original gesture annotations define the crops. Inference uses predicted boxes; the accuracy impact of this difference has not been evaluated end to end.
 
 ## Current progress
 
@@ -24,16 +24,15 @@ During dataset preparation, the detector selects source-frame groups while origi
 
 This is a validation result, not an independent test or deployment result. Separating source-frame keys does not by itself ensure separation by person or video.
 
-End-to-end inference is under development. Raspberry Pi deployment and hardware control have not yet been completed.
+Local file-video inference is implemented: ByteTrack associates officers across frames, optional EMA/PSEMA smooths each track's gesture scores, and the pipeline writes an annotated MP4. Raspberry Pi container inference, live CSI input, and hardware control have not yet been verified.
 
 ## Project files
 
 - [prepare_gesture_classifier_dataset.py](examples/traffic_gesture/train/prepare_gesture_classifier_dataset.py): dataset filtering, cropping, and letterbox preprocessing.
 - [train_gesture_classifier.py](examples/traffic_gesture/train/train_gesture_classifier.py): dataset checks, experiment configuration, training, and resumption.
 
-- [inference.py](examples/traffic_gesture/inference/inference.py): inference entry point under construction; an end-to-end pipeline is not yet implemented.
-
-Review dataset, checkpoint, and output settings before running the scripts. The dataset preparation module still contains an unfinished `InferencePipeline` placeholder.
+- [inference.py](examples/traffic_gesture/inference/inference.py): image and video inference entry point.
+- [Docker deployment guide](examples/traffic_gesture/deploy/README.md): expand the English section to run on a local video with Compose and verify the output. Use the `codex/gesture-pipeline` branch; these deployment files are not yet merged into `main`.
 
 ## Experiment artifacts and weights
 
@@ -44,7 +43,7 @@ The result folders include configurations, metrics, plots, sample images, and be
 
 ## Next steps
 
-Connect the detector and classifier into one inference pipeline, inspect validation errors, evaluate generalization to new people and cameras, and perform held-out testing after model selection. Export and benchmark models on Raspberry Pi 5 before exploring LED or other hardware interactions.
+Validate file-video inference on Raspberry Pi 5, measure throughput, and then integrate the camera. Evaluate generalization to new people and cameras separately from deployment speed before exploring hardware interactions.
 
 ## Resources
 

@@ -1,0 +1,17 @@
+services:
+  inference:
+    build:
+      context: ../../..
+      dockerfile: examples/traffic_gesture/deploy/Dockerfile
+    image: traffic-gesture-inference:local
+    volumes:
+      - type: bind
+        source: ${INPUT_VIDEO:?请设置 INPUT_VIDEO 为已有 MP4 的绝对路径}
+        target: /app/examples/traffic_gesture/inference/inputs/videos/test_video.mp4
+        read_only: true
+        bind:
+          create_host_path: false
+
+      - type: bind
+        source: ${OUTPUT_DIR:?请设置 OUTPUT_DIR 为输出目录的绝对路径}
+        target: /app/examples/traffic_gesture/inference/outputs/videos

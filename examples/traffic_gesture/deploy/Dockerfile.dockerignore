@@ -1,0 +1,10 @@
+.git
+.worktrees
+**/__pycache__
+**/*.pyc
+**/.env
+examples/traffic_gesture/inference/inputs
+examples/traffic_gesture/inference/outputs
+examples/traffic_gesture/results/**/*.png
+examples/traffic_gesture/results/**/*.jpg
+examples/traffic_gesture/results/**/last.pt
