@@ -22,6 +22,20 @@ cd examples/traffic_gesture/deploy
 
 ### 构建并运行
 
+镜像先从 [PyTorch CPU 索引](https://download.pytorch.org/whl/cpu/)安装 `torch==2.7.1+cpu` 和 `torchvision==0.22.1`，安装项目时继续固定这两个版本，避免解析到 CUDA 构建。构建会检查 `torch.version.cuda is None`、依赖一致性和 CPU NMS 算子。CPU 版镜像仍需在 Pi 上重新构建及验证；此前 CUDA 版的导入成功不代表此版本已通过测试。
+
+若通过 Pi 本机的 SSH 反向隧道代理下载，请保持隧道开启，并确认 Docker daemon 已配置代理。可以从仓库根目录使用以下命令构建同名镜像，然后回到本目录用 Compose 运行（无需再次 `compose build`）：
+
+```bash
+sudo docker build --network=host \
+  --build-arg HTTP_PROXY=http://127.0.0.1:17897 \
+  --build-arg HTTPS_PROXY=http://127.0.0.1:17897 \
+  --progress=plain -f examples/traffic_gesture/deploy/Dockerfile \
+  -t traffic-gesture-inference:local .
+```
+
+此网络设置仅作用于构建；代理地址按自己的环境调整，不写入镜像。若 Compose 需要 `sudo`，用 `sudo env INPUT_VIDEO="$INPUT_VIDEO" OUTPUT_DIR="$OUTPUT_DIR" docker compose ...` 显式传入下面的挂载路径变量。
+
 将输入路径换成已存在的真实文件。主机文件名不必叫 `test_video.mp4`：Compose 将它只读挂载为容器入口期待的文件名。输出目录是另一个可写挂载，删除容器不会删除结果。
 
 ```bash
@@ -68,6 +82,20 @@ cd examples/traffic_gesture/deploy
 ```
 
 ### Build and run
+
+The image installs `torch==2.7.1+cpu` and `torchvision==0.22.1` from the [PyTorch CPU index](https://download.pytorch.org/whl/cpu/), and keeps those pins when installing the project. Build checks cover `torch.version.cuda is None`, dependency consistency, and CPU NMS. This CPU image still needs a rebuild and runtime validation on the Pi; the earlier CUDA image's successful imports do not validate this image.
+
+When using a reverse SSH proxy tunnel on the Pi, keep the tunnel open and configure the Docker daemon proxy separately. From the repository root, build the same image tag as follows, then return to this directory to run Compose without rebuilding:
+
+```bash
+sudo docker build --network=host \
+  --build-arg HTTP_PROXY=http://127.0.0.1:17897 \
+  --build-arg HTTPS_PROXY=http://127.0.0.1:17897 \
+  --progress=plain -f examples/traffic_gesture/deploy/Dockerfile \
+  -t traffic-gesture-inference:local .
+```
+
+Host networking applies only to the build. Adapt the proxy address to your environment; it is not baked into the image. If Compose requires `sudo`, explicitly forward the mount variables below with `sudo env INPUT_VIDEO="$INPUT_VIDEO" OUTPUT_DIR="$OUTPUT_DIR" docker compose ...`.
 
 Set `INPUT_VIDEO` to the absolute path of your actual video. Its name on the host does not matter: Compose mounts it read-only as `test_video.mp4` inside the container. Mount a separate writable output directory so the result remains on the host after the container exits.
 
