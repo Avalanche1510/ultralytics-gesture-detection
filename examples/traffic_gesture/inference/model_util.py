@@ -5,6 +5,9 @@ import numpy as np
 from PIL import Image, ImageGrab
 from typing import TYPE_CHECKING
 from examples.traffic_gesture.inference.defaults import VIDEO_INPUT_DIR, VIDEO_OUTPUT_DIR, IMAGE_INPUT_DIR, IMAGE_OUTPUT_DIR
+from time import perf_counter
+from functools import wraps
+
 
 if TYPE_CHECKING:
     from examples.traffic_gesture.inference.inference import InferencePipeline
@@ -13,7 +16,26 @@ if TYPE_CHECKING:
 class ModelUtility:
     """提供输出命名、剪贴板读取、视频读写及逐帧推理编排。"""
     def __init__(self):
-        pass
+        self.timed_record = {}
+
+    def timed(self, func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            started = perf_counter()
+            result = func(*args, **kwargs)
+            elapsed = perf_counter() - started
+
+            # print(f"    {func.__name__}: {elapsed * 1000:.2f} ms")
+
+            if func.__name__ not in self.timed_record.keys():
+                self.timed_record[func.__name__] = [0.0, 0]
+            self.timed_record[func.__name__][0] += elapsed * 1000
+            self.timed_record[func.__name__][1] += 1
+            return result
+        return wrapper
+
+    def timed_reset(self):
+        self.timed_record = {}
 
     @staticmethod
     def set_output_path(output_dir, prefix: str = "IMAGE", suffix: str = "jpg") -> dict:
@@ -274,8 +296,23 @@ class ModelUtility:
 
             history_predictions = {}
 
+            perf_record = {
+                "read": 0.0,
+                "BGR->RGB": 0.0,
+                "RGB->BGR": 0.0,
+                "write": 0.0,
+
+            }
+            processed_frames = 0
+
             while end_frame == -1 or frame_index < end_frame:
+                t_started = perf_counter()
+
+                read_started = perf_counter()
                 success, frame = capture.read()
+                read_elapsed = perf_counter() - read_started
+                perf_record["read"] += read_elapsed
+
                 if not success:
                     break
                 if progress:
@@ -284,10 +321,17 @@ class ModelUtility:
                     else:
                         print(f"当前处于第{frame_index+1}/{frame_count}帧，进度{round((frame_index - start_frame + 1) / (end_frame - start_frame) * 100, 1)}%")
 
+                # print(f"    capture.read调用耗时: {read_elapsed * 1000:.2f} ms")
+
+                convert_started = perf_counter()
                 # OpenCV 的 BGR 数组 → Pillow 的 RGB 图片
                 image = Image.fromarray(
                     cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 )
+                convert_elapsed = perf_counter() - convert_started
+                perf_record["BGR->RGB"] += convert_elapsed
+                # print(f"    OpenCV BGR -> Pillow RGB调用耗时: {convert_elapsed * 1000:.2f} ms")
+
                 predictions = pipeline.get_image_predictions(
                     image,
                     use_detector=use_detector,
@@ -301,17 +345,46 @@ class ModelUtility:
                     history_predictions = predictions
 
                 annotated_image = pipeline.draw_predictions(image, predictions)
+
+                convert_started = perf_counter()
                 # annotated_image.show()
                 # 输入 Pillow 的 RGB 图片，输出 OpenCV 的 BGR
                 output_frame = cv2.cvtColor(
                     np.asarray(annotated_image),
                     cv2.COLOR_RGB2BGR
                 )
+                convert_elapsed = perf_counter() - convert_started
+                perf_record["RGB->BGR"] += convert_elapsed
+                # print(f"    Pillow RGB -> OpenCV BGR调用耗时: {convert_elapsed * 1000:.2f} ms")
+
+                write_started = perf_counter()
                 writer.write(output_frame)
+                processed_frames += 1
+                write_elapsed = perf_counter() - write_started
+                perf_record["write"] += write_elapsed
+                # print(f"    writer.write耗时: {write_elapsed * 1000:.2f} ms")
+
                 frame_index += 1
+
+                t_elapsed = perf_counter() - t_started
+                # print(f"    第{frame_index - start_frame}帧总开销: {t_elapsed * 1000:.2f} ms")
         finally:
             capture.release()
             if writer is not None:
                 writer.release()
+
+        if processed_frames > 0:
+            print(
+                f"平均读帧耗时："
+                f"{perf_record['read'] / processed_frames * 1000:.2f} ms/帧\n"
+                f"平均写帧耗时："
+                f"{perf_record['write'] / processed_frames * 1000:.2f} ms/帧\n"
+                f"平均BGR->RGB转换耗时："
+                f"{perf_record['BGR->RGB'] / processed_frames * 1000:.2f} ms/帧\n"
+                f"平均RGB->BGR转换耗时："
+                f"{perf_record['RGB->BGR'] / processed_frames * 1000:.2f} ms/帧\n"
+            )
+            for key in self.timed_record.keys():
+                print(f"{key}调用次数{self.timed_record[key][1]}，平均开销{self.timed_record[key][0] / self.timed_record[key][1]:.2f} ms/次\n")
 
 

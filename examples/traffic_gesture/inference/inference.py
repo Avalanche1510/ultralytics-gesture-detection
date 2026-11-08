@@ -3,19 +3,21 @@ import numpy as np
 from PIL import Image, ImageDraw
 from ultralytics import YOLO
 
-
 # 导入自定义的交警定位器，标注框裁剪器，标注框（正方形）塑形器
 from examples.traffic_gesture.train.prepare_gesture_classifier_dataset import (
     TrafficPoliceDetector,
     GestureCropTransformer,
     LetterboxTransformer,
 )
-# 导入ModelUtil工具类
+
+# 导入常量
+from examples.traffic_gesture.inference.defaults import *
+
+# 导入并初始化ModelUtil工具类
 from examples.traffic_gesture.inference.model_util import (
     ModelUtility
 )
-
-from examples.traffic_gesture.inference.defaults import *
+util = ModelUtility()
 
 
 class InferencePipeline:
@@ -41,6 +43,7 @@ class InferencePipeline:
         )
         self.classifier = YOLO(model=classifier_path)
 
+    @util.timed
     def identify_police(self, image: Image.Image, display=False, tracking=False) -> list[dict]:
         """检测或跟踪交警，返回每个目标的位置和检测分数。
 
@@ -64,6 +67,7 @@ class InferencePipeline:
             无目标或无可用跟踪 ID 时返回 []。跟踪模式使用轨迹 ID；
             普通检测使用从 0 开始的帧内序号，不能跨帧关联。
         """
+
         if tracking:
             detections = self.detector.track(image)
         else:
@@ -86,9 +90,9 @@ class InferencePipeline:
                     f"框={detection['box']}，"
                     f"检测置信度={detection['detector_confidence']:.3f}"
                 )
-
         return detections
 
+    @util.timed
     def classify_gesture(self, image: Image.Image, detection=None, display=False) -> dict:
         """裁剪并塑形后分类；没有检测结果时对整张图片分类。
 
@@ -327,6 +331,7 @@ class InferencePipeline:
         }
         return prediction_result
 
+    @util.timed
     def draw_predictions(self, image: Image.Image, predictions: dict[int, dict], save: bool = False, save_dir: Path = IMAGE_OUTPUT_DIR) -> Image.Image:
         """在原图副本上绘制当前概率对应的类别，可选保存为 JPEG。
 
@@ -391,10 +396,10 @@ def main():
     pipeline = InferencePipeline(DETECTOR_PATH, CLASSIFIER_PATH)
     print("分类模型的类别映射：", pipeline.classifier.names)
 
-    util = ModelUtility()
-
     video_path = Path(VIDEO_INPUT_DIR / "test_video.mp4")
     util.predict_video(pipeline, video_path, smoothing_params={"method": "PSEMA", "alpha": 0.2})
+    # 重置性能跟踪计数
+    util.timed_reset()
 
     # image_path = Path(r"C:\Users\AvaAtlas\Pictures\Screenshots\Screenshot 2026-10-25 125547.png")
     # with Image.open(image_path) as image:
